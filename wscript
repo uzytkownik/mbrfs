@@ -14,6 +14,8 @@ def configure(conf):
     conf.check_cfg(package='fuse', uselib_store='FUSE',
                    atleast_version='2.6.0', mandatory=1,
                    args='--cflags --libs')
+    conf.define('VERSION', VERSION)
+    conf.write_config_header('config.h')
 
 def build(bld):
     mbrfs = bld.new_task_gen('cc', 'program')

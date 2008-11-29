@@ -16,9 +16,9 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#define MBR_VERSION "0.0.0"
-
 #define FUSE_USE_VERSION 26
+#include "config.h"
+
 #include <errno.h>
 #include <fcntl.h>
 #include <stdbool.h>
@@ -375,7 +375,7 @@ mbr_opt_proc (void *data, const char *arg, int key,
   switch (key)
     {
     case KEY_VERSION:
-      fprintf (stderr, "MBRFS %s\n", MBR_VERSION);
+      fprintf (stderr, "MBRFS %s\n", VERSION);
       fuse_opt_add_arg (args, "--version");
       fuse_main (args->argc, args->argv, &mbr_oper, data);
       exit(0);
