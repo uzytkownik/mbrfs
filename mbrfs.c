@@ -274,7 +274,6 @@ mbr_read (const char *path, char *buf,
   
   data = mbr_get_data ();
   part = mbr_find_partition (data, path, &rest);
-
   if (part == NULL)
     return -ENOENT;
   
@@ -304,11 +303,55 @@ mbr_read (const char *path, char *buf,
     }
 }
 
+static int
+mbr_write (const char *path, const char *buf,
+	   size_t size, off_t offset,
+	   struct fuse_file_info *fi)
+{
+  struct mbr_data *data;
+  struct mbr_partition *part;
+  char *rest;
+  
+  data = mbr_get_data ();
+  if (data->ro)
+    return -EBADF;
+  
+  part = mbr_find_partition (data, path, &rest);
+  if (part == NULL)
+    return -ENOENT;
+  
+  if (!rest && !part->mounted)
+    {
+      char *raw;
+      char *rraw;
+      size_t rsize;
+      
+      if (offset + (off_t)size > part->length)
+	{
+	  if (offset > part->length)
+	    return 0;
+	  size = part->length - offset;
+	}
+
+      raw = mbr_mmap (data, PROT_WRITE, offset + part->offset,
+		      size, &rraw, &rsize);
+      memcpy (raw, buf, size);
+      munmap (rraw, rsize);
+      
+      return size;
+    }
+  else
+    {
+      return -ENOENT;
+    }
+}
+
 static struct fuse_operations mbr_oper = {
   .getattr = mbr_getattr,
   .readdir = mbr_readdir,
   .open    = mbr_open,
-  .read    = mbr_read
+  .read    = mbr_read,
+  .write   = mbr_write
 };
 
 enum {
@@ -415,7 +458,7 @@ mbr_read_mbr (struct mbr_data *data)
       data->primary[iter].length =
 	(off_t)((off_t)data->primary[iter].table.length * (off_t)512);
       data->primary[iter].offset =
-	(off_t)((off_t)data->primary[iter].table.length * (off_t)512);
+	(off_t)((off_t)data->primary[iter].table.offset * (off_t)512);
       iter++;
     }
   
