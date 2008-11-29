@@ -323,10 +323,46 @@ mbr_opt_proc (void *data, const char *arg, int key,
     }
 }
 
+static struct mbr_partition *
+mbr_read_ebr (struct mbr_data *data, off_t offset)
+{
+  uint8_t *mbr;
+  struct mbr_partition *part;
+  uint32_t inner_offset;
+
+  part = calloc(1, sizeof (struct mbr_partition));
+  
+  mbr = mmap (NULL, 512, PROT_READ, MAP_PRIVATE, data->fd, offset);
+  if (mbr[0x1FE] != 0x55 || mbr[0x1FF] != 0xAA)
+    {
+      fprintf(stderr, "Wrong magic number.\n");
+      exit (2);
+    }
+
+  memcpy (&part->table, mbr + 0x1BE, 16);
+  part->offset = offset + (off_t)((off_t)part->table.offset * (off_t)512);
+  part->length = (off_t)((off_t)part->table.length * (off_t)512);
+
+  inner_offset = *((uint32_t *)&mbr[0x1CE + 0x008]);
+
+  munmap (mbr, 512);
+
+  if (part->table.type == 0x05 || part->table.type == 0x0f)
+    {
+      part->sub = mbr_read_ebr (data, part->offset);
+    }
+  
+  if (inner_offset)
+    {
+      part->next = mbr_read_ebr (data, offset + (off_t)inner_offset);
+    }
+  
+  return part;
+}
+
 static void
 mbr_read_mbr (struct mbr_data *data)
 {
-  struct mbr_partition *part;
   int iter;
   uint8_t *mbr;
   
@@ -349,9 +385,9 @@ mbr_read_mbr (struct mbr_data *data)
   data->primary[0].next = &data->primary[1];
   data->primary[1].next = &data->primary[2];
   data->primary[2].next = &data->primary[3];
-  
+
   iter = 0;
-  while(iter < 4)
+  while (iter < 4)
     {
       memcpy (&data->primary[iter].table, mbr + 0x1BE + iter * 0x010, 16);
       data->primary[iter].length =
@@ -362,6 +398,19 @@ mbr_read_mbr (struct mbr_data *data)
     }
   
   munmap (mbr, 512);
+
+  /* Read EBRs */
+  iter = 0;
+  while (iter < 4)
+    {
+      if (data->primary[iter].table.type == 0x05 ||
+	  data->primary[iter].table.type == 0x0f)
+	{
+	  data->primary[iter].sub =
+	    mbr_read_ebr (data, data->primary[iter].offset);
+	}
+      iter++;
+    }
 }
 
 int main(int argc, char *argv[])
