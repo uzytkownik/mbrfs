@@ -129,6 +129,24 @@ mbr_get_data ()
   return (struct mbr_data *) fuse_get_context ()->private_data;
 }
 
+static char *
+mbr_mmap (struct mbr_data *data, int proto,
+	  off_t offset, size_t size,
+	  char **unmap_p, size_t *unmap_s)
+{
+  int pagesize;
+  int shift;
+  
+  pagesize = getpagesize ();
+
+  shift = offset % pagesize;
+  offset -= shift;
+  *unmap_s = size + shift;
+  *unmap_p = mmap (NULL, *unmap_s, proto, MAP_SHARED, data->fd, offset);
+  return *unmap_p + shift;
+}
+
+
 static int
 mbr_getattr (const char *path, struct stat *stbuf)
 {
@@ -252,7 +270,6 @@ mbr_read (const char *path, char *buf,
 {
   struct mbr_data *data;
   struct mbr_partition *part;
-  void *raw;
   char *rest;
   
   data = mbr_get_data ();
@@ -263,16 +280,21 @@ mbr_read (const char *path, char *buf,
   
   if (!rest && !part->mounted)
     {
+      char *raw;
+      char *rraw;
+      size_t rsize;
+      
       if (offset + (off_t)size > part->length)
 	{
 	  if (offset > part->length)
 	    return 0;
 	  size = part->length - offset;
 	}
-      
-      raw = mmap (NULL, size, PROT_READ, MAP_PRIVATE, data->fd, offset);
+
+      raw = mbr_mmap (data, PROT_READ, offset + part->offset,
+		      size, &rraw, &rsize);
       memcpy (buf, raw, size);
-      munmap (raw, size);
+      munmap (rraw, rsize);
       
       return size;
     }
