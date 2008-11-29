@@ -42,6 +42,9 @@ struct mbr_partition
     uint32_t offset;
     uint32_t length;
   } table;
+
+  off_t offset;
+  off_t length;
   
   struct mbr_partition *next;
   struct mbr_partition *sub;
@@ -154,7 +157,7 @@ mbr_getattr (const char *path, struct stat *stbuf)
     {
       stbuf->st_mode = S_IFREG | 0644;
       stbuf->st_nlink = 1;
-      stbuf->st_size = part->table.length * 512;
+      stbuf->st_size = part->length;
       return 0;
     }
   else
@@ -260,11 +263,11 @@ mbr_read (const char *path, char *buf,
   
   if (!rest && !part->mounted)
     {
-      if (offset + size > part->table.length)
+      if (offset + (off_t)size > part->length)
 	{
-	  if (offset > part->table.length)
+	  if (offset > part->length)
 	    return 0;
-	  size = part->table.length - offset;
+	  size = part->length - offset;
 	}
       
       raw = mmap (NULL, size, PROT_READ, MAP_PRIVATE, data->fd, offset);
@@ -351,6 +354,10 @@ mbr_read_mbr (struct mbr_data *data)
   while(iter < 4)
     {
       memcpy (&data->primary[iter].table, mbr + 0x1BE + iter * 0x010, 16);
+      data->primary[iter].length =
+	(off_t)((off_t)data->primary[iter].table.length * (off_t)512);
+      data->primary[iter].offset =
+	(off_t)((off_t)data->primary[iter].table.length * (off_t)512);
       iter++;
     }
   
